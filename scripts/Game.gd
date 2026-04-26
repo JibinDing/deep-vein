@@ -8,6 +8,8 @@ const LANTERN_SCRIPT := preload("res://scripts/LanternSystem.gd")
 const BACKPACK_SCRIPT := preload("res://scripts/Backpack.gd")
 const MAP_GENERATOR_SCRIPT := preload("res://scripts/MapGenerator.gd")
 const FEEDBACK_LAYER_SCRIPT := preload("res://scripts/FeedbackLayer.gd")
+const DARKNESS_OVERLAY_SCRIPT := preload("res://scripts/DarknessOverlay.gd")
+const MINING_INDICATOR_SCRIPT := preload("res://scripts/MiningIndicator.gd")
 
 var tile_manager
 var pathfinder
@@ -16,6 +18,8 @@ var lantern
 var backpack
 var hud
 var feedback
+var darkness
+var mining_indicator
 var camera: Camera2D
 
 var map_data: Dictionary
@@ -25,20 +29,25 @@ var session_ores: Dictionary = {}
 var current_depth := 0
 var elapsed_time := 0.0
 var is_evacuating := false
+var last_camera_cell := Vector2i(-999, -999)
 
 func _ready() -> void:
 	camera = $Camera2D
 	_build_world()
 	_build_systems()
 	_build_feedback()
+	_build_mining_indicator()
+	_build_darkness()
 	_build_hud()
 
 func _process(delta: float) -> void:
 	elapsed_time += delta
 	if player != null:
 		camera.global_position = player.global_position
+		_update_visible_map_if_needed()
 		current_depth = max(current_depth, player.grid_position.y)
 		hud.update_depth(current_depth)
+		_update_mining_indicator()
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode == KEY_E:
@@ -48,6 +57,8 @@ func _input(event: InputEvent) -> void:
 		if _is_mouse_over_blocking_ui():
 			return
 		handle_click(get_global_mouse_position())
+	elif event is InputEventMouseMotion:
+		update_hover(get_global_mouse_position())
 
 func _is_mouse_over_blocking_ui() -> bool:
 	var hovered := get_viewport().gui_get_hovered_control()
@@ -60,6 +71,7 @@ func _build_world() -> void:
 
 	tile_manager = TILE_MANAGER_SCRIPT.new()
 	add_child(tile_manager)
+	tile_manager.set_camera(camera)
 	tile_manager.load_map(map_data)
 
 	pathfinder = PATHFINDER_SCRIPT.new()
@@ -71,20 +83,22 @@ func _build_world() -> void:
 	player.setup(tile_manager, pathfinder, entrance + Vector2i(0, 1))
 
 func _build_systems() -> void:
+	var stats: Dictionary = UpgradeDatabase.get_session_stats()
 	backpack = BACKPACK_SCRIPT.new()
-	backpack.max_weight = 10.0 + SaveManager.get_upgrade_level("backpack_size") * 2.0
+	backpack.max_weight = float(stats["backpack_max_weight"])
 	backpack.changed.connect(_on_backpack_changed)
 	backpack.full.connect(_on_backpack_full)
 
 	lantern = LANTERN_SCRIPT.new()
 	add_child(lantern)
-	lantern.max_lantern = 100.0 + SaveManager.get_upgrade_level("lantern_duration") * 20.0
+	lantern.max_lantern = float(stats["lantern_max"])
 	lantern.current_lantern = lantern.max_lantern
 	lantern.changed.connect(_on_lantern_changed)
 	lantern.depleted.connect(start_evacuation)
 
-	player.mine_speed += SaveManager.get_upgrade_level("mine_speed") * 0.15
-	player.mine_power += SaveManager.get_upgrade_level("mine_power")
+	player.mine_speed = float(stats["mine_speed"])
+	player.mine_power = int(stats["mine_power"])
+	player.move_speed = float(stats["move_speed"])
 	player.move_step.connect(lantern.on_move_step)
 	player.mine_hit.connect(_on_player_mine_hit)
 	player.mine_complete.connect(_on_player_mine_complete)
@@ -92,6 +106,17 @@ func _build_systems() -> void:
 func _build_feedback() -> void:
 	feedback = FEEDBACK_LAYER_SCRIPT.new()
 	add_child(feedback)
+
+func _build_mining_indicator() -> void:
+	mining_indicator = MINING_INDICATOR_SCRIPT.new()
+	add_child(mining_indicator)
+	mining_indicator.setup(tile_manager)
+
+func _build_darkness() -> void:
+	darkness = DARKNESS_OVERLAY_SCRIPT.new()
+	add_child(darkness)
+	darkness.setup(player, camera)
+	darkness.set_lantern(lantern.current_lantern, lantern.max_lantern)
 
 func _build_hud() -> void:
 	hud = HUD_SCENE.instantiate()
@@ -106,6 +131,7 @@ func handle_click(world_pos: Vector2) -> void:
 	var clicked_cell: Vector2i = tile_manager.world_to_cell(world_pos)
 	if not tile_manager.is_in_bounds(clicked_cell):
 		return
+	tile_manager.flash_cell(clicked_cell)
 	var cell_type: int = tile_manager.get_cell_type(clicked_cell)
 	match cell_type:
 		TILE_MANAGER_SCRIPT.CellType.EMPTY:
@@ -116,6 +142,31 @@ func handle_click(world_pos: Vector2) -> void:
 			var adjacent := get_adjacent_empty_cell(clicked_cell, player.grid_position)
 			if adjacent != Vector2i(-1, -1):
 				player.move_then_mine(adjacent, clicked_cell)
+
+func update_hover(world_pos: Vector2) -> void:
+	if is_evacuating or tile_manager == null:
+		tile_manager.set_hover(Vector2i(-1, -1), "none")
+		return
+	if _is_mouse_over_blocking_ui():
+		tile_manager.set_hover(Vector2i(-1, -1), "none")
+		return
+	var cell: Vector2i = tile_manager.world_to_cell(world_pos)
+	if not tile_manager.is_in_bounds(cell):
+		tile_manager.set_hover(Vector2i(-1, -1), "none")
+		return
+	tile_manager.set_hover(cell, _interaction_mode_for_cell(cell))
+
+func _interaction_mode_for_cell(cell: Vector2i) -> String:
+	var cell_type: int = tile_manager.get_cell_type(cell)
+	match cell_type:
+		TILE_MANAGER_SCRIPT.CellType.EMPTY:
+			return "move" if not pathfinder.find_path(player.grid_position, cell).is_empty() else "blocked"
+		TILE_MANAGER_SCRIPT.CellType.ENTRANCE:
+			return "evacuate"
+		TILE_MANAGER_SCRIPT.CellType.ROCK, TILE_MANAGER_SCRIPT.CellType.ORE, TILE_MANAGER_SCRIPT.CellType.HARD_ROCK:
+			return "mine" if get_adjacent_empty_cell(cell, player.grid_position) != Vector2i(-1, -1) else "blocked"
+		_:
+			return "blocked"
 
 func get_adjacent_empty_cell(target: Vector2i, player_pos: Vector2i) -> Vector2i:
 	var neighbors := [
@@ -166,6 +217,7 @@ func _on_player_mine_hit(cell: Vector2i) -> void:
 	feedback.show_mine_hit(tile_manager.cell_to_world(cell))
 
 func _on_player_mine_complete(cell: Vector2i, ore_id: String) -> void:
+	mining_indicator.clear()
 	if ore_id != "":
 		if backpack.try_add_ore(ore_id):
 			var ore = OreDatabase.get_ore(ore_id)
@@ -179,6 +231,20 @@ func _on_player_mine_complete(cell: Vector2i, ore_id: String) -> void:
 		feedback.show_plain_mined(tile_manager.cell_to_world(cell))
 	current_depth = max(current_depth, cell.y)
 
+func _update_mining_indicator() -> void:
+	if mining_indicator == null:
+		return
+	if player == null or not player.is_mining:
+		mining_indicator.clear()
+		return
+	var target_cell: Vector2i = player.mine_target
+	var current_hp: int = tile_manager.get_cell_hp(target_cell)
+	var max_hp: int = 2 if tile_manager.get_cell_type(target_cell) == TILE_MANAGER_SCRIPT.CellType.HARD_ROCK else 1
+	var hit_duration: float = 1.0 / max(0.01, player.mine_speed)
+	var progress: float = clamp(player.mine_elapsed / hit_duration, 0.0, 1.0)
+	mining_indicator.show_for_cell(target_cell, current_hp, max_hp)
+	mining_indicator.update_progress(progress, current_hp)
+
 func _on_backpack_changed() -> void:
 	hud.update_backpack(backpack)
 
@@ -187,3 +253,12 @@ func _on_backpack_full() -> void:
 
 func _on_lantern_changed(current: float, max_value: float) -> void:
 	hud.update_lantern(current, max_value)
+	if darkness != null:
+		darkness.set_lantern(current, max_value)
+
+func _update_visible_map_if_needed() -> void:
+	var camera_cell: Vector2i = tile_manager.world_to_cell(camera.global_position)
+	if camera_cell == last_camera_cell:
+		return
+	last_camera_cell = camera_cell
+	tile_manager.queue_redraw()

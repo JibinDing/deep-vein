@@ -1,5 +1,7 @@
 extends Control
 
+const GOLD_ICON_PATH := "res://Art/ui/clean/icon_gold_coin.png"
+
 func _ready() -> void:
 	_build_ui()
 
@@ -29,14 +31,23 @@ func _build_ui() -> void:
 	var lines := [
 		"深度：%dm" % depth,
 		"探险时间：%02d:%02d" % [int(elapsed / 60.0), int(elapsed) % 60],
-		"矿灯剩余：%d%%" % int(lantern),
-		"本次收益：%d 金币" % gold
+		"矿灯剩余：%d%%" % int(lantern)
 	]
 	for line: String in lines:
 		var label := Label.new()
 		label.text = line
 		label.add_theme_font_size_override("font_size", 24)
 		stats.add_child(label)
+
+	var gold_row := HBoxContainer.new()
+	gold_row.add_theme_constant_override("separation", 8)
+	stats.add_child(gold_row)
+	gold_row.add_child(_make_icon(GOLD_ICON_PATH, Vector2(30, 30)))
+	var gold_result := Label.new()
+	gold_result.text = "本次收益：%d" % gold
+	gold_result.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	gold_result.add_theme_font_size_override("font_size", 24)
+	gold_row.add_child(gold_result)
 
 	var ores_title := Label.new()
 	ores_title.text = "获得资源"
@@ -77,3 +88,18 @@ func _build_ui() -> void:
 	again_button.custom_minimum_size = Vector2(180, 52)
 	again_button.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/Game.tscn"))
 	add_child(again_button)
+
+func _make_icon(path: String, size: Vector2) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.custom_minimum_size = size
+	icon.size = size
+	icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture = _load_png_texture(path)
+	return icon
+
+func _load_png_texture(path: String) -> Texture2D:
+	var image := Image.new()
+	if image.load(path) != OK:
+		return null
+	return ImageTexture.create_from_image(image)

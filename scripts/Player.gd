@@ -14,12 +14,22 @@ var mine_speed := 1.0
 var mine_power := 1
 
 const TILE_MANAGER_SCRIPT := preload("res://scripts/TileManager.gd")
+const IDLE_DOWN_TEXTURE_PATH := "res://Art/character/processed/idle_down_64.png"
 
 var tile_manager
 var pathfinder
 var path: Array[Vector2i] = []
 var pending_mine_target := Vector2i(-1, -1)
 var mine_elapsed := 0.0
+var sprite: Sprite2D
+
+func _ready() -> void:
+	sprite = Sprite2D.new()
+	sprite.texture = _load_png_texture(IDLE_DOWN_TEXTURE_PATH)
+	sprite.centered = true
+	sprite.position = Vector2(0, -18)
+	sprite.z_index = 10
+	add_child(sprite)
 
 func setup(manager, finder, start_cell: Vector2i) -> void:
 	tile_manager = manager
@@ -94,5 +104,13 @@ func _process_mining(delta: float) -> void:
 		tile_manager.set_cell_hp(mine_target, hp)
 
 func _draw() -> void:
+	if sprite != null and sprite.texture != null:
+		return
 	draw_circle(Vector2.ZERO, 11.0, Color(0.95, 0.72, 0.28))
 	draw_circle(Vector2.ZERO + Vector2(0, -3), 6.0, Color(0.35, 0.26, 0.18))
+
+func _load_png_texture(path: String) -> Texture2D:
+	var image := Image.new()
+	if image.load(path) != OK:
+		return null
+	return ImageTexture.create_from_image(image)

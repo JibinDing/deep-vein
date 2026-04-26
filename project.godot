@@ -14,6 +14,7 @@ config/icon="res://icon.svg"
 
 SaveManager="*res://scripts/SaveManager.gd"
 OreDatabase="*res://scripts/OreDatabase.gd"
+UpgradeDatabase="*res://scripts/UpgradeDatabase.gd"
 
 [display]
 

@@ -1,105 +1,86 @@
 extends Control
 
-var upgrades := {
-	"backpack_size": {
-		"name": "背包扩容",
-		"costs": [200, 350, 500, 800, 1200],
-		"description": "背包容量 +2"
-	},
-	"lantern_duration": {
-		"name": "灯具改良",
-		"costs": [150, 280, 420, 650, 1000],
-		"description": "矿灯上限 +20"
-	},
-	"mine_speed": {
-		"name": "镐头强化",
-		"costs": [300, 480, 700, 1000, 1500],
-		"description": "挖掘速度 +15%"
-	},
-	"mine_power": {
-		"name": "破岩强化",
-		"costs": [500, 900, 1500],
-		"description": "挖掘力量 +1"
-	}
-}
+const CAMP_BACKGROUND_PATH := "res://Art/ui/camp.png"
+const GOLD_ICON_PATH := "res://Art/ui/clean/icon_gold_coin.png"
 
 var gold_label: Label
-var upgrades_box: HBoxContainer
 
 func _ready() -> void:
 	_build_ui()
 	_refresh()
 
 func _build_ui() -> void:
-	var bg := ColorRect.new()
-	bg.color = Color(0.05, 0.045, 0.035)
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
+	var bg_texture := TextureRect.new()
+	bg_texture.texture = _load_png_texture(CAMP_BACKGROUND_PATH)
+	bg_texture.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	add_child(bg_texture)
+
+	var bg_overlay := ColorRect.new()
+	bg_overlay.color = Color(0.02, 0.018, 0.014, 0.28)
+	bg_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(bg_overlay)
 
 	var title := Label.new()
 	title.text = "营地"
 	title.position = Vector2(48, 36)
-	title.add_theme_font_size_override("font_size", 38)
+	title.add_theme_font_size_override("font_size", 42)
 	add_child(title)
 
+	var depth_label := Label.new()
+	depth_label.text = "最深 %dm" % int(SaveManager.data["deepest_depth"])
+	depth_label.position = Vector2(52, 92)
+	depth_label.modulate = Color(0.82, 0.70, 0.48)
+	add_child(depth_label)
+
+	var gold_row := HBoxContainer.new()
+	gold_row.position = Vector2(990, 42)
+	gold_row.add_theme_constant_override("separation", 8)
+	add_child(gold_row)
+	gold_row.add_child(_make_icon(GOLD_ICON_PATH, Vector2(30, 30)))
 	gold_label = Label.new()
-	gold_label.position = Vector2(940, 42)
+	gold_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	gold_label.add_theme_font_size_override("font_size", 22)
-	add_child(gold_label)
+	gold_row.add_child(gold_label)
+
+	var button_column := VBoxContainer.new()
+	button_column.position = Vector2(960, 500)
+	button_column.add_theme_constant_override("separation", 14)
+	add_child(button_column)
 
 	var start_button := Button.new()
 	start_button.text = "下矿"
-	start_button.position = Vector2(1040, 600)
-	start_button.custom_minimum_size = Vector2(160, 54)
+	start_button.custom_minimum_size = Vector2(190, 56)
 	start_button.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/Game.tscn"))
-	add_child(start_button)
+	button_column.add_child(start_button)
 
-	upgrades_box = HBoxContainer.new()
-	upgrades_box.position = Vector2(90, 445)
-	upgrades_box.add_theme_constant_override("separation", 18)
-	add_child(upgrades_box)
+	var upgrade_button := Button.new()
+	upgrade_button.text = "升级工坊"
+	upgrade_button.custom_minimum_size = Vector2(190, 52)
+	upgrade_button.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/UpgradeScreen.tscn"))
+	button_column.add_child(upgrade_button)
 
-	var hint := Label.new()
-	hint.text = "MVP 骨架：先验证采矿循环，后续再替换成参考图的手绘 UI。"
-	hint.position = Vector2(90, 385)
-	hint.modulate = Color(0.78, 0.67, 0.45)
-	add_child(hint)
+	var log_label := Label.new()
+	log_label.text = "准备好装备后进入矿洞。升级可以在工坊中完成。"
+	log_label.position = Vector2(52, 640)
+	log_label.modulate = Color(0.78, 0.68, 0.48)
+	add_child(log_label)
 
 func _refresh() -> void:
-	gold_label.text = "金币 %d" % SaveManager.data["total_gold"]
-	for child in upgrades_box.get_children():
-		child.queue_free()
-	for id: String in upgrades.keys():
-		upgrades_box.add_child(_make_upgrade_card(id))
+	gold_label.text = "%d" % SaveManager.data["total_gold"]
 
-func _make_upgrade_card(id: String) -> Control:
-	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(210, 150)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 8)
-	card.add_child(box)
+func _make_icon(path: String, size: Vector2) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.custom_minimum_size = size
+	icon.size = size
+	icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture = _load_png_texture(path)
+	return icon
 
-	var info: Dictionary = upgrades[id]
-	var level := SaveManager.get_upgrade_level(id)
-	var costs: Array = info["costs"]
-	var maxed := level >= costs.size()
-
-	var title := Label.new()
-	title.text = "%s %d/%d" % [info["name"], level, costs.size()]
-	box.add_child(title)
-
-	var desc := Label.new()
-	desc.text = info["description"]
-	box.add_child(desc)
-
-	var button := Button.new()
-	button.text = "已满级" if maxed else "升级 %d 金币" % costs[level]
-	button.disabled = maxed or SaveManager.data["total_gold"] < costs[level]
-	button.pressed.connect(func():
-		if SaveManager.spend_gold(costs[level]):
-			SaveManager.set_upgrade_level(id, level + 1)
-			_refresh()
-	)
-	box.add_child(button)
-
-	return card
+func _load_png_texture(path: String) -> Texture2D:
+	var image := Image.new()
+	if image.load(path) != OK:
+		return null
+	return ImageTexture.create_from_image(image)
