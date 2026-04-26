@@ -1,0 +1,28 @@
+; Engine configuration file.
+; Best edited using the Godot editor.
+
+config_version=5
+
+[application]
+
+config/name="Deep Vein"
+run/main_scene="res://scenes/Camp.tscn"
+config/features=PackedStringArray("4.2")
+config/icon="res://icon.svg"
+
+[autoload]
+
+SaveManager="*res://scripts/SaveManager.gd"
+OreDatabase="*res://scripts/OreDatabase.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
