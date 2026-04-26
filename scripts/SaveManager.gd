@@ -9,7 +9,10 @@ var data: Dictionary = {
 	"sessions_played": 0,
 	"deepest_depth": 0,
 	"total_gold_earned": 0,
-	"era": "candle"
+	"era": "candle",
+	"warehouse": {},
+	"equipment_owned": {},
+	"loadout": []
 }
 
 func _ready() -> void:
@@ -55,3 +58,14 @@ func record_session(depth: int) -> void:
 	data["sessions_played"] += 1
 	data["deepest_depth"] = max(int(data["deepest_depth"]), depth)
 	save_game()
+
+func add_to_warehouse(ores: Dictionary) -> void:
+	if not data.has("warehouse"):
+		data["warehouse"] = {}
+	for ore_id: String in ores:
+		var count := int(ores[ore_id])
+		data["warehouse"][ore_id] = int(data["warehouse"].get(ore_id, 0)) + count
+	save_game()
+
+func get_warehouse() -> Dictionary:
+	return data.get("warehouse", {})

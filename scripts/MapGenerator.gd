@@ -19,19 +19,17 @@ func generate() -> Dictionary:
 			var cell := Vector2i(x, y)
 			var type := TILE_MANAGER_SCRIPT.CellType.ROCK
 			if y == 0:
-				type = TILE_MANAGER_SCRIPT.CellType.ENTRANCE
-			elif x == shaft_x or x == shaft_x + 1:
-				type = TILE_MANAGER_SCRIPT.CellType.EMPTY
-			elif y % rng.randi_range(10, 15) == 0 and abs(x - shaft_x) < rng.randi_range(5, 14):
-				type = TILE_MANAGER_SCRIPT.CellType.EMPTY
+				type = TILE_MANAGER_SCRIPT.CellType.EMPTY  # 地表上方空气层
+			elif y == 1:
+				type = TILE_MANAGER_SCRIPT.CellType.ROCK   # 可挖土块层
 			else:
-				var ore_id := _roll_ore(y)
+				var ore_id := _roll_ore(y - 1)
 				if ore_id != "":
 					type = TILE_MANAGER_SCRIPT.CellType.ORE
 					ore_ids[cell] = ore_id
-				elif y > 20 and rng.randf() < 0.08:
+				elif y > 21 and rng.randf() < 0.08:
 					type = TILE_MANAGER_SCRIPT.CellType.HARD_ROCK
-				elif y > 50 and rng.randf() < 0.03:
+				elif y > 51 and rng.randf() < 0.03:
 					type = TILE_MANAGER_SCRIPT.CellType.BLOCKED
 			cells[cell] = type
 			hp[cell] = 2 if type == TILE_MANAGER_SCRIPT.CellType.HARD_ROCK else 1

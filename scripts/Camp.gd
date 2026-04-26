@@ -45,21 +45,33 @@ func _build_ui() -> void:
 	gold_row.add_child(gold_label)
 
 	var button_column := VBoxContainer.new()
-	button_column.position = Vector2(960, 500)
+	button_column.position = Vector2(960, 430)
 	button_column.add_theme_constant_override("separation", 14)
 	add_child(button_column)
 
 	var start_button := Button.new()
 	start_button.text = "下矿"
 	start_button.custom_minimum_size = Vector2(190, 56)
-	start_button.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/Game.tscn"))
+	start_button.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/LoadoutScreen.tscn"))
 	button_column.add_child(start_button)
 
 	var upgrade_button := Button.new()
-	upgrade_button.text = "升级工坊"
+	upgrade_button.text = "科技工坊"
 	upgrade_button.custom_minimum_size = Vector2(190, 52)
-	upgrade_button.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/UpgradeScreen.tscn"))
+	upgrade_button.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/TechWorkshop.tscn"))
 	button_column.add_child(upgrade_button)
+
+	var warehouse_button := Button.new()
+	warehouse_button.text = "仓库"
+	warehouse_button.custom_minimum_size = Vector2(190, 52)
+	warehouse_button.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/WarehouseScreen.tscn"))
+	button_column.add_child(warehouse_button)
+
+	var merchant_button := Button.new()
+	merchant_button.text = "商人"
+	merchant_button.custom_minimum_size = Vector2(190, 52)
+	merchant_button.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/MerchantScreen.tscn"))
+	button_column.add_child(merchant_button)
 
 	var log_label := Label.new()
 	log_label.text = "准备好装备后进入矿洞。升级可以在工坊中完成。"

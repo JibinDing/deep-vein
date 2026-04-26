@@ -4,6 +4,7 @@ class_name DarknessOverlay
 var player
 var camera: Camera2D
 var lantern_pct := 1.0
+var remaining_secs := 999.0
 var time := 0.0
 
 var min_radius := 72.0
@@ -17,11 +18,12 @@ func setup(target_player, target_camera: Camera2D) -> void:
 	z_as_relative = false
 	set_process(true)
 
-func set_lantern(current: float, max_value: float) -> void:
+func set_lantern(current: float, max_value: float, secs: float = 999.0) -> void:
 	if max_value <= 0.0:
 		lantern_pct = 0.0
 	else:
 		lantern_pct = clamp(current / max_value, 0.0, 1.0)
+	remaining_secs = secs
 	queue_redraw()
 
 func _process(delta: float) -> void:
@@ -68,15 +70,18 @@ func _draw_ring(center: Vector2, inner_radius: float, outer_radius: float, inner
 		)
 
 func _current_radius() -> float:
-	var pct: float = lantern_pct
-	var radius: float = lerp(min_radius, max_radius, pct)
-	if pct < 0.2:
+	const SHRINK_START := 10.0
+	var shrink_pct: float = clamp(1.0 - remaining_secs / SHRINK_START, 0.0, 1.0)
+	var radius: float = lerp(max_radius, min_radius, shrink_pct)
+	if remaining_secs < 5.0:
 		var flicker: float = sin(time * 22.0) * 0.08 + sin(time * 47.0) * 0.045
 		radius *= clamp(1.0 + flicker, 0.82, 1.08)
 	return radius
 
 func _darkness_alpha() -> float:
-	var alpha: float = lerp(0.98, 0.92, lantern_pct)
-	if lantern_pct < 0.2:
+	const SHRINK_START := 10.0
+	var shrink_pct: float = clamp(1.0 - remaining_secs / SHRINK_START, 0.0, 1.0)
+	var alpha: float = lerp(0.92, 0.98, shrink_pct)
+	if remaining_secs < 5.0:
 		alpha += (sin(time * 31.0) + 1.0) * 0.015
 	return clamp(alpha, 0.90, 0.99)

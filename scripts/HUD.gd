@@ -6,11 +6,15 @@ const BACKPACK_ICON_PATH := "res://Art/ui/clean/icon_backpack.png"
 const GOLD_ICON_PATH := "res://Art/ui/clean/icon_gold_coin.png"
 
 var lantern_bar: ProgressBar
+var lantern_time_label: Label
 var backpack_bar: ProgressBar
+var backpack_weight_label: Label
 var depth_label: Label
 var gold_label: Label
 var backpack_list: VBoxContainer
 var warning_label: Label
+var dynamite_label: Label
+var probe_label: Label
 var hud_panel_style: StyleBoxFlat
 
 func _ready() -> void:
@@ -33,13 +37,30 @@ func _ready() -> void:
 	top_left.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	resource_panel.add_child(top_left)
 
-	lantern_bar = _add_meter(top_left, LANTERN_ICON_PATH, "煤油灯", 100.0, Vector2(34, 34))
-	backpack_bar = _add_meter(top_left, BACKPACK_ICON_PATH, "背包重量", 0.0, Vector2(34, 34))
+	var lantern_result := _add_meter_with_label(top_left, LANTERN_ICON_PATH, Vector2(34, 34))
+	lantern_bar = lantern_result[0]
+	lantern_time_label = lantern_result[1]
+	lantern_time_label.text = "--:--"
+	var bp_result := _add_meter_with_label(top_left, BACKPACK_ICON_PATH, Vector2(34, 34))
+	backpack_bar = bp_result[0]
+	backpack_weight_label = bp_result[1]
 
 	warning_label = Label.new()
 	warning_label.text = ""
 	warning_label.modulate = Color(1.0, 0.38, 0.28)
 	top_left.add_child(warning_label)
+
+	dynamite_label = Label.new()
+	dynamite_label.text = ""
+	dynamite_label.add_theme_font_size_override("font_size", 13)
+	dynamite_label.visible = false
+	top_left.add_child(dynamite_label)
+
+	probe_label = Label.new()
+	probe_label.text = ""
+	probe_label.add_theme_font_size_override("font_size", 13)
+	probe_label.visible = false
+	top_left.add_child(probe_label)
 
 	var right_panel := PanelContainer.new()
 	right_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
@@ -72,41 +93,103 @@ func _ready() -> void:
 	depth_label.text = "深度 0m"
 	root.add_child(depth_label)
 
-	var gold_row := HBoxContainer.new()
-	gold_row.position = Vector2(1070, 664)
-	gold_row.add_theme_constant_override("separation", 6)
-	gold_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(gold_row)
-	gold_row.add_child(_make_icon(GOLD_ICON_PATH, Vector2(24, 24)))
 	gold_label = Label.new()
-	gold_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	gold_row.add_child(gold_label)
 
-func update_lantern(current: float, max_value: float) -> void:
+func update_lantern(current: float, max_value: float, remaining_secs: float = -1.0) -> void:
 	lantern_bar.max_value = max_value
 	lantern_bar.value = current
-	if current / max_value < 0.2:
-		warning_label.text = "灯光微弱，尽快撤离"
+	if remaining_secs >= 0.0:
+		var secs := int(remaining_secs)
+		lantern_time_label.text = "%02d:%02d" % [secs / 60, secs % 60]
+		if remaining_secs < 20.0:
+			lantern_time_label.modulate = Color(1.0, 0.30, 0.22)
+			warning_label.text = "灯光微弱，尽快撤离"
+		else:
+			lantern_time_label.modulate = Color(0.85, 0.78, 0.55)
+			warning_label.text = ""
 
 func update_backpack(backpack) -> void:
-	backpack_bar.value = backpack.get_fill_pct() * 100.0
+	backpack_bar.max_value = backpack.max_weight
+	backpack_bar.value = backpack.current_weight
+	backpack_weight_label.text = "%.1fkg / %.0fkg" % [backpack.current_weight, backpack.max_weight]
 	for child in backpack_list.get_children():
-		if child is Label and child.text != "背包":
+		if child is HBoxContainer:
 			child.queue_free()
 	for ore_id: String in backpack.contents.keys():
 		var ore = OreDatabase.get_ore(ore_id)
-		var row := Label.new()
-		row.text = "%s x%d" % [ore.ore_name if ore != null else ore_id, backpack.contents[ore_id]]
+		var row := HBoxContainer.new()
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_theme_constant_override("separation", 6)
 		backpack_list.add_child(row)
+		var icon_tex := _load_png_texture("res://Art/ui/resource_icon/icon_%s.png" % ore_id)
+		if icon_tex != null:
+			var icon := TextureRect.new()
+			icon.texture = icon_tex
+			icon.custom_minimum_size = Vector2(20, 20)
+			icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			row.add_child(icon)
+		var label := Label.new()
+		label.text = "%s x%d" % [ore.ore_name if ore != null else ore_id, backpack.contents[ore_id]]
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(label)
 
 func update_depth(depth: int) -> void:
 	depth_label.text = "深度 %dm" % depth
+
+func update_dynamite(charges: int, active: bool) -> void:
+	if charges <= 0 and not active:
+		dynamite_label.visible = false
+		return
+	dynamite_label.visible = true
+	dynamite_label.text = "炸药 ×%d  [F]" % charges if not active else "💥 炸药模式  [点击放置]"
+	dynamite_label.modulate = Color(1.0, 0.55, 0.10) if active else Color(0.82, 0.70, 0.46)
+
+func update_dynamite_countdown(secs: int) -> void:
+	dynamite_label.visible = secs >= 0
+	if secs >= 0:
+		dynamite_label.text = "💣 引爆倒计时  %ds" % secs
+		dynamite_label.modulate = Color(1.0, 0.25, 0.10) if secs <= 2 else Color(1.0, 0.60, 0.15)
+
+func update_probe(charges: int, active: bool) -> void:
+	if charges <= 0:
+		probe_label.visible = false
+		return
+	probe_label.visible = true
+	probe_label.text = "探矿锤 ×%d  [G]" % charges if not active else "🔍 探矿模式  [点击探测]"
+	probe_label.modulate = Color(0.40, 0.85, 1.0) if active else Color(0.82, 0.70, 0.46)
 
 func update_gold(amount: int) -> void:
 	gold_label.text = "%d" % amount
 
 func show_backpack_full() -> void:
 	warning_label.text = "背包已满"
+
+func _add_meter_with_label(parent: VBoxContainer, icon_path: String, icon_size: Vector2) -> Array:
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 10)
+	parent.add_child(row)
+	row.add_child(_make_icon(icon_path, icon_size))
+
+	var column := VBoxContainer.new()
+	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.custom_minimum_size = Vector2(220, 46)
+	row.add_child(column)
+
+	var weight_lbl := Label.new()
+	weight_lbl.text = "0kg / 10kg"
+	weight_lbl.add_theme_font_size_override("font_size", 13)
+	column.add_child(weight_lbl)
+
+	var bar := ProgressBar.new()
+	bar.max_value = 10.0
+	bar.value = 0.0
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(220, 14)
+	column.add_child(bar)
+	return [bar, weight_lbl]
 
 func _add_meter(parent: VBoxContainer, icon_path: String, label_text: String, initial_value: float, icon_size: Vector2) -> ProgressBar:
 	var row := HBoxContainer.new()

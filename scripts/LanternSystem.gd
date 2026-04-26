@@ -31,3 +31,8 @@ func drain(amount: float) -> void:
 
 func get_pct() -> float:
 	return current_lantern / max_lantern
+
+func get_remaining_seconds() -> float:
+	if time_depletion_rate <= 0.0:
+		return 9999.0
+	return current_lantern / time_depletion_rate

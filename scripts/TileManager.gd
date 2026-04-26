@@ -14,6 +14,7 @@ enum CellType {
 const CELL_SIZE := 32
 const FLOOR_TEXTURE_PATH := "res://Art/tiles/processed/floor_empty_64.png"
 const ROCK_TEXTURE_PATH := "res://Art/tiles/processed/rock_normal_01_64.png"
+const ENTRANCE_TEXTURE_PATH := "res://Art/tiles/entrance_floor_01.png"
 
 var map_size := Vector2i.ZERO
 var cells: Dictionary = {}
@@ -26,10 +27,24 @@ var click_flash_time := 0.0
 var camera: Camera2D
 var floor_texture: Texture2D
 var rock_texture: Texture2D
+var entrance_texture: Texture2D
+var ore_textures: Dictionary = {}
 
 func _ready() -> void:
 	floor_texture = _load_png_texture(FLOOR_TEXTURE_PATH)
 	rock_texture = _load_png_texture(ROCK_TEXTURE_PATH)
+	entrance_texture = _load_png_texture(ENTRANCE_TEXTURE_PATH)
+	_load_ore_textures()
+
+func _load_ore_textures() -> void:
+	var ore_tile_map := {
+		"coal": "res://Art/tiles/ore_coal.png",
+		"iron": "res://Art/tiles/ore_iron.png",
+	}
+	for ore_id: String in ore_tile_map:
+		var tex := _load_png_texture_no_white(ore_tile_map[ore_id])
+		if tex != null:
+			ore_textures[ore_id] = tex
 
 func set_camera(target_camera: Camera2D) -> void:
 	camera = target_camera
@@ -86,6 +101,14 @@ func set_cell_hp(cell: Vector2i, value: int) -> void:
 func get_cell_ore(cell: Vector2i) -> String:
 	return String(ore_ids.get(cell, ""))
 
+func instant_mine(cell: Vector2i) -> String:
+	var type := get_cell_type(cell)
+	if type == CellType.BLOCKED or type == CellType.ENTRANCE or type == CellType.EMPTY:
+		return ""
+	var ore_id := get_cell_ore(cell)
+	set_cell_type(cell, CellType.EMPTY)
+	return ore_id
+
 func cell_to_world(cell: Vector2i) -> Vector2:
 	return Vector2(cell) * CELL_SIZE + Vector2.ONE * CELL_SIZE * 0.5
 
@@ -113,6 +136,8 @@ func _color_for_cell(cell: Vector2i) -> Color:
 		CellType.ENTRANCE:
 			return Color(0.34, 0.24, 0.12)
 		CellType.ORE:
+			if not _is_ore_revealed(cell):
+				return Color(0.28, 0.24, 0.18)
 			var ore = OreDatabase.get_ore(get_cell_ore(cell))
 			return ore.glow_color.darkened(0.25) if ore != null else Color(0.75, 0.58, 0.12)
 		CellType.HARD_ROCK:
@@ -122,6 +147,13 @@ func _color_for_cell(cell: Vector2i) -> Color:
 		_:
 			return Color(0.25, 0.24, 0.22)
 
+func _is_ore_revealed(cell: Vector2i) -> bool:
+	for dir in [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]:
+		var t := get_cell_type(cell + dir)
+		if t == CellType.EMPTY or t == CellType.ENTRANCE:
+			return true
+	return false
+
 func _draw_cell(cell: Vector2i, rect: Rect2) -> void:
 	var type := get_cell_type(cell)
 	match type:
@@ -130,8 +162,25 @@ func _draw_cell(cell: Vector2i, rect: Rect2) -> void:
 		CellType.ENTRANCE:
 			_draw_entrance(cell, rect)
 		CellType.ORE:
-			_draw_rock(cell, rect, _ore_base_color(cell))
-			_draw_ore_core(cell, rect)
+			if _is_ore_revealed(cell):
+				var ore_id := get_cell_ore(cell)
+				if ore_textures.has(ore_id):
+					_draw_rock(cell, rect, _ore_base_color(cell))
+					draw_texture_rect(ore_textures[ore_id], rect.grow(0.75), false)
+				else:
+					_draw_rock(cell, rect, _ore_base_color(cell))
+					_draw_ore_core(cell, rect)
+			else:
+				_draw_rock(cell, rect, Color(0.28, 0.24, 0.18))
+		CellType.ROCK:
+			if cell.y <= 1:
+				var shade := _cell_noise(cell, 5)
+				var dirt := Color(0.36, 0.24, 0.10).lightened(shade * 0.10)
+				draw_rect(rect.grow(-1.0), dirt, true)
+				draw_rect(rect.grow(-3.0), Color(0.52, 0.36, 0.16, 0.22), false, 1.0)
+				_draw_specks(cell, rect, Color(0.25, 0.16, 0.06, 0.40), 5)
+			else:
+				_draw_rock(cell, rect, Color(0.26, 0.25, 0.22))
 		CellType.HARD_ROCK:
 			_draw_rock(cell, rect, Color(0.22, 0.17, 0.13))
 			_draw_cracks(cell, rect, Color(0.07, 0.055, 0.045, 0.9), 3)
@@ -155,6 +204,9 @@ func _draw_floor(cell: Vector2i, rect: Rect2) -> void:
 	_draw_specks(cell, rect, Color(0.33, 0.30, 0.24, 0.28), 3)
 
 func _draw_entrance(cell: Vector2i, rect: Rect2) -> void:
+	if entrance_texture != null:
+		draw_texture_rect(entrance_texture, rect.grow(0.75), false)
+		return
 	var shade := _cell_noise(cell, 2)
 	var base := Color(0.30, 0.20, 0.10).lightened(shade * 0.08)
 	draw_rect(rect.grow(-1.0), base, true)
@@ -218,6 +270,18 @@ func _load_png_texture(path: String) -> Texture2D:
 	var image := Image.new()
 	if image.load(path) != OK:
 		return null
+	return ImageTexture.create_from_image(image)
+
+func _load_png_texture_no_white(path: String) -> Texture2D:
+	var image := Image.new()
+	if image.load(path) != OK:
+		return null
+	image.convert(Image.FORMAT_RGBA8)
+	for y in range(image.get_height()):
+		for x in range(image.get_width()):
+			var c := image.get_pixel(x, y)
+			if c.r >= 0.88 and c.g >= 0.88 and c.b >= 0.88:
+				image.set_pixel(x, y, Color(c.r, c.g, c.b, 0.0))
 	return ImageTexture.create_from_image(image)
 
 func _visible_cell_bounds() -> Rect2i:
