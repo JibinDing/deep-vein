@@ -5,3 +5,4 @@ export_presets.cfg
 exports/
 user/
 tools/
+zxf_voice/.env
