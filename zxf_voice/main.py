@@ -37,13 +37,25 @@ SENTENCE_ENDS = set("。！？…\n")
 
 # ── 初始化 ────────────────────────────────────────────────────────────────────
 
+import platform
+
 print("加载 Whisper medium 模型...", flush=True)
-try:
-    whisper = WhisperModel("medium", device="cuda", compute_type="float16")
-    print("Whisper: GPU ✓")
-except Exception:
-    whisper = WhisperModel("medium", device="cpu", compute_type="int8")
-    print("Whisper: CPU ✓")
+if platform.system() == "Darwin":
+    # macOS: 优先 Metal (Apple Silicon)，fallback CPU
+    try:
+        whisper = WhisperModel("medium", device="auto", compute_type="int8")
+        print("Whisper: Metal/Apple Silicon ✓")
+    except Exception:
+        whisper = WhisperModel("medium", device="cpu", compute_type="int8")
+        print("Whisper: CPU ✓")
+else:
+    # Windows/Linux: 优先 CUDA，fallback CPU
+    try:
+        whisper = WhisperModel("medium", device="cuda", compute_type="float16")
+        print("Whisper: CUDA GPU ✓")
+    except Exception:
+        whisper = WhisperModel("medium", device="cpu", compute_type="int8")
+        print("Whisper: CPU ✓")
 
 deepseek = OpenAI(
     api_key=os.getenv("DEEPSEEK_API_KEY"),
